@@ -2,6 +2,8 @@ import os
 import logging
 import requests
 import aiohttp
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
@@ -10,10 +12,26 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
 TOKEN = "8909903351:AAEvmhToP2-Vf0lqpA_wXNdXsBoAw5rc5jM"
 
 os.makedirs("downloads", exist_ok=True)
+
+# ==========================================
+# Dummy HTTP Server សម្រាប់ Render Web Service (ការពារកំហុស No open ports)
+# ==========================================
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive and running!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    logger.info(f"🌐 Dummy HTTP Server running on port {port}")
+    server.serve_forever()
 
 # ==========================================
 # មុខងារទាញយកទាំង Slideshow និង វីដេអូធម្មតា ព្រមទាំង Caption & Hashtags
@@ -73,11 +91,11 @@ async def process_single_link(update: Update, url: str):
                             )
                             await update.message.reply_text("✅ រួចរាល់! វីដេអូត្រូវបានទាញយកដោយជោគជ័យ។")
                         else:
-                            await update.message.reply_text("⚠️ មិនអាចទាញយកឯកសារវីដេអូនេះได้ទេ។")
+                            await update.message.reply_text("⚠️ មិនអាចទាញយកឯកសារវីដេអូនេះបានទេ។")
             else:
-                await update.message.reply_text("❌ មិនអាចរកឃើញមាតិកា (រូបភាព ឬវីដេអូ) ពី Link នេះได้ទេ។")
+                await update.message.reply_text("❌ មិនអាចរកឃើញមាតិកា (រូបភាព ឬវីដេអូ) ពី Link នេះបានទេ។")
         else:
-            await update.message.reply_text("❌ មិនអាចអាន Link នេះได้ទេ (ប្រហែលខុសទម្រង់ ឬជាប់កម្រិតឯកជនភាព)។")
+            await update.message.reply_text("❌ មិនអាចអាន Link នេះបានទេ (ប្រហែលខុសទម្រង់ ឬជាប់កម្រិតឯកជនភាព)។")
             
     except Exception as e:
         await update.message.reply_text(f"❌ មានបញ្ហាបច្ចេកទេស៖ {str(e)}")
@@ -100,6 +118,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_single_link(update, real_url)
 
 def main():
+    # ចាប់ផ្តើម Dummy HTTP Server ក្នុង Thread ដាច់ដោយឡែក ដើម្បីបើក Port ឱ្យ Render ស្គាល់
+    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
+    server_thread.start()
+
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
